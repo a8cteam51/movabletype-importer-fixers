@@ -247,9 +247,16 @@ class MT_Import_Fixes extends MT_Migration_Base {
 		}
 		$this->init_mt_db();
 
-		$query = 'SELECT p.ID, p.post_content, t1.entry_text, t1.entry_text_more
-			FROM `wordpress-two`.sixcolors_posts as p
-			LEFT JOIN ( SELECT entry_text, entry_text_more, entry_title from MT_sixcolors.mt_entry ) as t1 on ( t1.entry_title=p.post_title )';
+		global $wpdb;
+
+		$query = sprintf(
+			'SELECT p.ID, p.post_content, t1.entry_text, t1.entry_text_more
+			FROM `%s`.%sposts as p
+			LEFT JOIN ( SELECT entry_text, entry_text_more, entry_title from `%s`.mt_entry ) as t1 on ( t1.entry_title=p.post_title )',
+			DB_NAME,
+			$wpdb->prefix,
+			MT_DB_NAME
+		);
 
 		$posts         = $this->mt_db->get_results( $query, ARRAY_A );
 		$total_found   = count( $posts );
