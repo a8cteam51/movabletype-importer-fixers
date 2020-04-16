@@ -83,7 +83,7 @@ A collection of tools and documentation related to migrating sites from Movable 
     Success: Total time taken by this script: 1 second
     ````
 
-- To match Movable Type mark down with Jetpack markdown: `wp mt-wp-cli migrate-meta-values`
+- To match Movable Type markdown with Jetpack markdown: `wp mt-wp-cli migrate-meta-values`
   - *Why?* : Only when Movable Type used a markdown in post content. This will just save the posts without any change and Jetpack will parse it's markdown. [This needs Jetpack activated and markdown parsing enabled from its settings. ref - https://jetpack.com/support/markdown/]
   - Options:
     - `--dry-run` : true/false [To indicate the dry-rn mode or not]
