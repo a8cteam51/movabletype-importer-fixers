@@ -12,7 +12,7 @@ install:
 	/tmp/phpcs --config-set installed_paths /tmp/wpcs
 
 phpcs:
-	/tmp/phpcs -p . --standard=WordPress-Extra --extensions=php --runtime-set ignore_warnings_on_exit true
+	/tmp/phpcs -ps . --standard=WordPress-Extra --extensions=php --runtime-set ignore_warnings_on_exit true
 
 phpcbf:
 	/tmp/phpcbf . --standard=WordPress-Extra
