@@ -26,6 +26,22 @@ class MT_Import_Fixes extends MT_Migration_Base {
 	 *   - 2
 	 *   - 3
 	 *
+	 * [--post-id-offset]
+	 * : Post-ID offset for delta migration.
+	 * ---
+	 * default: false
+	 * options:
+	 *   - 10
+	 *   - 10000
+	 *
+	 * [--field-names]
+	 * : Field Name from Movable type. Comma (,) separated names.
+	 * ---
+	 * default: ''
+	 * options:
+	 *   - link
+	 *   - link,podcast,mp3,sitename,leadimage,leadimagecaption
+	 *
 	 * [--field-type]
 	 * : Field type.
 	 * ---
@@ -50,6 +66,10 @@ class MT_Import_Fixes extends MT_Migration_Base {
 		// Starting time of the script.
 		$start_time = time();
 
+		if ( empty( $assoc_args['field-names'] ) ) {
+			$this->error( sprintf( 'Please pass --field-names option with comma (,) separated filed names.' ) );
+		}
+
 		// To enable WP_IMPORTING.
 		if ( ! defined( 'WP_IMPORTING' ) ) {
 			define( 'WP_IMPORTING', true );
@@ -65,6 +85,8 @@ class MT_Import_Fixes extends MT_Migration_Base {
 			$this->blog_id = intval( $assoc_args['blog-id'] );
 		}
 
+		$field_names = explode( ',', $assoc_args['field-names'] );
+
 		$field_type = 'postmeta';
 
 		if ( ! empty( $assoc_args['field-type'] ) && in_array( $assoc_args['field-type'], array( 'ACF' ), true ) ) {
@@ -75,11 +97,14 @@ class MT_Import_Fixes extends MT_Migration_Base {
 			$this->write_log( 'Meta values will be migrated to WP postmeta.' );
 		}
 
+		if ( ! empty( $assoc_args['post-id-offset'] ) && 'false' !== $assoc_args['post-id-offset'] && intval( $assoc_args['post-id-offset'] ) ) {
+
+			$this->post_id_delta_offset = intval( $assoc_args['post-id-offset'] );
+		}
+
 		$this->init_mt_db();
 
-		$query = sprintf( 'SELECT entry_id, entry_title FROM `mt_entry` WHERE entry_blog_id=%d AND entry_class=\'entry\'', $this->blog_id );
-
-		$migratabe_metas = array( 'link', 'podcast', 'mp3', 'sitename', 'leadimage', 'leadimagecaption' );
+		$query = sprintf( 'SELECT entry_id, entry_title, REPLACE( entry_basename, "_", "-" ) as entry_basename FROM `mt_entry` WHERE entry_blog_id=%d AND entry_class=\'entry\'', $this->blog_id );
 
 		$posts         = $this->mt_db->get_results( $query, ARRAY_A );
 		$total_found   = count( $posts );
@@ -87,16 +112,26 @@ class MT_Import_Fixes extends MT_Migration_Base {
 
 		foreach ( $posts as $key => $post ) {
 			$wp_post = get_page_by_title( $post['entry_title'], ARRAY_A, 'post' );
+			if ( empty( $wp_post ) ) {
+				$wp_post = get_page_by_path( $post['entry_basename'], ARRAY_A, 'post' );
+			}
 
-			$meta_query = sprintf( 'SELECT fdvalue_key ,fdvalue_value from mt_fdvalue where fdvalue_blog_id=%d AND fdvalue_object_id=%d', $this->blog_id, intval( $post['entry_id'] ) );
-			$meta_info  = $this->mt_db->get_results( $meta_query, ARRAY_A );
-			foreach ( $meta_info as $meta_row ) {
-				if ( ! empty( $meta_row['fdvalue_key'] ) && in_array( $meta_row['fdvalue_key'], $migratabe_metas, true ) ) {
+			if ( ! empty( $wp_post['ID'] ) ) {
+				if ( false !== $this->post_id_delta_offset && $this->post_id_delta_offset >= (int) $wp_post['ID'] ) {
+					$total_found--;
+					continue;
+				}
+				$meta_query = sprintf( 'SELECT fdvalue_key ,fdvalue_value from mt_fdvalue where fdvalue_blog_id=%d AND fdvalue_object_id=%d', $this->blog_id, intval( $post['entry_id'] ) );
+				$meta_info  = $this->mt_db->get_results( $meta_query, ARRAY_A );
+				foreach ( $meta_info as $meta_row ) {
+					if ( ! empty( $meta_row['fdvalue_key'] ) && in_array( $meta_row['fdvalue_key'], $field_type, true ) ) {
 
-					if ( ! $this->dry_run && 'ACF' === $field_type ) {
-						update_field( $meta_row['fdvalue_key'], $meta_row['fdvalue_value'], $wp_post['ID'] );
-					} elseif ( ! $this->dry_run ) {
-						update_post_meta( $wp_post['ID'], $meta_row['fdvalue_key'], $meta_row['fdvalue_value'] );
+						if ( ! $this->dry_run && 'ACF' === $field_type ) {
+							update_field( $meta_row['fdvalue_key'], $meta_row['fdvalue_value'], $wp_post['ID'] );
+						} elseif ( ! $this->dry_run ) {
+							update_post_meta( $wp_post['ID'], $meta_row['fdvalue_key'], $meta_row['fdvalue_value'] );
+						}
+						$success_count++;
 					}
 				}
 			}
@@ -127,6 +162,14 @@ class MT_Import_Fixes extends MT_Migration_Base {
 	 * options:
 	 *   - true
 	 *   - false
+	 *
+	 * [--post-id-offset]
+	 * : Post-ID offset for delta migration.
+	 * ---
+	 * default: false
+	 * options:
+	 *   - 10
+	 *   - 10000
 	 *
 	 * [--blog-id]
 	 * : Blog id if MT is having multiple blog.
@@ -168,12 +211,17 @@ class MT_Import_Fixes extends MT_Migration_Base {
 			$this->blog_id = intval( $assoc_args['blog-id'] );
 		}
 
+		if ( ! empty( $assoc_args['post-id-offset'] ) && 'false' !== $assoc_args['post-id-offset'] && intval( $assoc_args['post-id-offset'] ) ) {
+
+			$this->post_id_delta_offset = intval( $assoc_args['post-id-offset'] );
+		}
+
 		$this->init_mt_db();
 
 		$query = sprintf(
-			'SELECT mtot.objecttag_object_id, mtot.objecttag_tag_id, t1.tag_name, t2.entry_title FROM `mt_objecttag`as mtot
+			'SELECT mtot.objecttag_object_id, mtot.objecttag_tag_id, t1.tag_name, t2.entry_title, t2.entry_basename FROM `mt_objecttag`as mtot
 				LEFT JOIN ( SELECT tag_id, tag_name from mt_tag ) as t1 on ( t1.tag_id=mtot.objecttag_tag_id )
-				LEFT JOIN ( SELECT entry_id, entry_title from mt_entry ) as t2 on ( t2.entry_id=mtot.objecttag_object_id )
+				LEFT JOIN ( SELECT entry_id, entry_title, replace(entry_basename, "_", "-") as entry_basename from mt_entry ) as t2 on ( t2.entry_id=mtot.objecttag_object_id )
 				WHERE objecttag_blog_id=%d AND objecttag_object_datasource=\'entry\'',
 			$this->blog_id
 		);
@@ -184,8 +232,17 @@ class MT_Import_Fixes extends MT_Migration_Base {
 
 		foreach ( $posts as $key => $post ) {
 			$wp_post = get_page_by_title( $post['entry_title'], ARRAY_A, 'post' );
+			if ( empty( $wp_post ) ) {
+				$wp_post = get_page_by_path( $post['entry_basename'], ARRAY_A, 'post' );
+			}
 
-			if ( ! empty( $wp_post['ID'] ) ) {
+			if ( ! empty( $wp_post['ID'] ) && ! empty( $post['tag_name'] ) ) {
+
+				if ( false !== $this->post_id_delta_offset && $this->post_id_delta_offset >= (int) $wp_post['ID'] ) {
+					$total_found--;
+					continue;
+				}
+
 				if ( ! $this->dry_run ) {
 					wp_set_post_tags( $wp_post['ID'], $post['tag_name'], true );
 				}
@@ -220,6 +277,22 @@ class MT_Import_Fixes extends MT_Migration_Base {
 	 *   - true
 	 *   - false
 	 *
+	 * [--post-status]
+	 * : Post status.
+	 * ---
+	 * default: publish
+	 * options:
+	 *   - publish
+	 *   - draft
+	 *
+	 * [--post-id-offset]
+	 * : Post-ID offset for delta migration.
+	 * ---
+	 * default: false
+	 * options:
+	 *   - 10
+	 *   - 10000
+	 *
 	 * ## EXAMPLES
 	 *
 	 *   wp mt-wp-cli overwrite-content
@@ -245,18 +318,43 @@ class MT_Import_Fixes extends MT_Migration_Base {
 
 			$this->dry_run = false;
 		}
+
+		if ( ! empty( $assoc_args['post-status'] ) && 'draft' === $assoc_args['dry-run'] ) {
+
+			$this->post_status = 'draft';
+		}
+
+		if ( ! empty( $assoc_args['post-id-offset'] ) && 'false' !== $assoc_args['post-id-offset'] && intval( $assoc_args['post-id-offset'] ) ) {
+
+			$this->post_id_delta_offset = intval( $assoc_args['post-id-offset'] );
+		}
+
 		$this->init_mt_db();
 
 		global $wpdb;
 
-		$query = sprintf(
-			'SELECT p.ID, p.post_content, t1.entry_text, t1.entry_text_more
+		if ( false === $this->post_id_delta_offset ) {
+			$query = sprintf(
+				'SELECT p.ID, p.post_content, t1.entry_text, t1.entry_text_more, t1.entry_basename
 			FROM `%s`.%sposts as p
-			LEFT JOIN ( SELECT entry_text, entry_text_more, entry_title from `%s`.mt_entry ) as t1 on ( t1.entry_title=p.post_title )',
-			DB_NAME,
-			$wpdb->prefix,
-			MT_DB_NAME
-		);
+			LEFT JOIN ( SELECT entry_text, entry_text_more, entry_title, REPLACE( entry_basename, "_", "-" ) as entry_basename  from `%s`.mt_entry ) as t1 on ( t1.entry_basename=p.post_name OR t1.entry_title=p.post_title ) WHERE p.post_type="post" AND p.post_status="%s"',
+				DB_NAME,
+				$wpdb->prefix,
+				MT_DB_NAME,
+				$this->post_status
+			);
+		} else {
+			$query = sprintf(
+				'SELECT p.ID, p.post_content, t1.entry_text, t1.entry_text_more, t1.entry_basename
+			FROM `%s`.%sposts as p
+			LEFT JOIN ( SELECT entry_text, entry_text_more, entry_title, REPLACE( entry_basename, "_", "-" ) as entry_basename  from `%s`.mt_entry ) as t1 on ( t1.entry_basename=p.post_name OR t1.entry_title=p.post_title ) WHERE p.post_type="post" AND p.post_status="%s" AND p.ID>%d',
+				DB_NAME,
+				$wpdb->prefix,
+				MT_DB_NAME,
+				$this->post_status,
+				$this->post_id_delta_offset
+			);
+		}
 
 		$posts         = $this->mt_db->get_results( $query, ARRAY_A );
 		$total_found   = count( $posts );

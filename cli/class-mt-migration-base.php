@@ -12,10 +12,12 @@ require_once 'class-mt-database.php';
 
 class MT_Migration_Base extends WP_CLI_Command {
 
-	protected $dry_run   = true;
-	protected $post_type = 'post';
-	protected $mt_db     = false;
-	protected $blog_id   = 1;
+	protected $dry_run              = true;
+	protected $post_type            = 'post';
+	protected $mt_db                = false;
+	protected $blog_id              = 1;
+	protected $post_id_delta_offset = false;
+	protected $post_status          = 'publish';
 
 	/**
 	 * To init the MT db.
