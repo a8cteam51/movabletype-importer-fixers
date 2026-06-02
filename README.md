@@ -1,112 +1,166 @@
-# movabletype-importer-fixers
-A collection of tools and documentation related to migrating sites from Movable Type to WordPress.
+# Movable Type Importer fixes
 
-### Why? 🧐
+Movable Type Importer fixes is a WordPress plugin that adds WP-CLI commands for cleanup work after importing Movable Type content into WordPress. The plugin is intended to help with post-import fixes that are not handled by the default Movable Type to WordPress importer, including tag migration, content replacement, custom field migration, and resaving content for Jetpack Markdown parsing.
 
-- Movable Type to WordPress importer (Default one from wpcomdotorg) have some issues. To fix those issues after import, this tool will help fixing the issues.
+The plugin header in `movabletype-importer-fixers.php` identifies the plugin as:
 
-- As Movable Type is being updated day by day, There are some outdated support needs to be handled manually.
+- **Plugin Name:** Movable Type Importer fixes
+- **Version:** 1.0.0
+- **Author:** Automattic
+- **License:** GPL-2.0+
+- **Text Domain:** `movabletype-importer-fixers`
 
-### Environment Setup: 💻
+## Repository contents
 
-- To start with this tool, A SQL dump of database is required.
-- In the same wordpress env or any external env this database can be imported. (Make sure that the database should be accessible through WordPress env where this migration needs to be done)
-- There are 4 different Globals needed for the connection of second database in WordPress installation. (in wp-config.php)
+- `movabletype-importer-fixers.php` is the WordPress plugin bootstrap file. It defines `MT_MIGRATION_TOOLS_VERSION`, sets `MT_MIGRATION_TOOLS_DIR`, and loads the CLI code only when `WP_CLI` is defined and truthy.
+- `cli/init.php` loads the CLI command classes.
+- `cli/class-mt-migration-base.php` defines the base `WP_CLI_Command`, the `test-db-connection` subcommand, logging helpers, and Movable Type database initialization.
+- `cli/class-mt-import-fixes.php` registers the `mt-wp-cli` WP-CLI namespace and implements the migration/fix subcommands.
+- `cli/class-mt-database.php` creates a `wpdb` connection to the Movable Type database.
+- `.phpcs.xml` configures PHPCS with the `WordPress-Extra` ruleset and excludes the GitHub workflow directory.
+- `.github/workflows/phpcs.yml` runs a PHPCS inspection on pull requests.
 
-  1. `MT_DB_HOST` : This can be the endpoint or IP of instance where Movable Type database is hosted. If database imported in same WordPress database place then no need of this Global var, It will pick by default same env.
+There are no tracked Composer or npm manifests in this repository, and there are no tracked tests, build artifacts, deployment files, nested READMEs, themes, block metadata, REST routes, shortcodes, custom post type registrations, or taxonomy registrations.
 
-  2. `MT_DB_USER` : This can be the username of Movable Type database, to access the database. If database imported in same WordPress database place then no need of this Global var, It will pick by default same env.
+## Requirements
 
-  3. `MT_DB_PASSWORD` : This can be the password of Movable Type database, to access the database. If database imported in same WordPress database place then no need of this Global var, It will pick by default same env.
-  
-  4. `MT_DB_NAME` : This is the Movable Type database name, to access the database. This variable is mandatory.
+Use this plugin in a WordPress environment that can run WP-CLI. The CLI classes extend `WP_CLI_Command` and use WordPress APIs such as `get_page_by_title()`, `get_page_by_path()`, `wp_set_post_tags()`, `wp_update_post()`, `update_post_meta()`, and `get_posts()`.
 
-- Test the database connection by this command: `wp mt-wp-cli test-db-connection `
+The plugin also expects access to a Movable Type database. `MT_DB_NAME` is required. The database host, user, and password default to the current WordPress database constants and can be overridden with Movable Type-specific constants.
 
-- If connection is failing then it will prompt a message to re-check the connection setup.
+For `--field-type=ACF`, the migration code calls `update_field()`, so that mode requires an environment where that function is available.
 
-### How it works? 🤔
+For `sync-jetpack-markdown`, the command resaves posts so Jetpack can parse Markdown when Jetpack Markdown support is active.
 
-- To migrate the Movable Type tags to WP tags: `wp mt-wp-cli migrate-tags [options]`
-  - *Why?* : Movable Type to WordPress importer is not importing tags with the content/posts.
-  - Options:
-    - `--dry-run` : true/false [To indicate the dry-rn mode or not]
-    - `--blog-id` : (int) Movable Type blog ID <default: 1> [This is needed only when Movable type has multiple blogs under one setup/database]
-  - Example: 
-    ````
-    > wp mt-wp-cli migrate-tags --dry-run=true --blog-id=1
-    Success: Total 100 posts will be processed.
-    
-    Success: Total time taken by this script: 1 second
-    
-    > wp mt-wp-cli migrate-tags --dry-run=false --blog-id=1
-    Success: Total 100 posts have been processed.
-    
-    Success: Total time taken by this script: 1 second
-    ````
+## Movable Type database configuration
 
-- To overwrite the WordPress post content from MT post content: `wp mt-wp-cli overwrite-content`
-  - *Why?* : 
-    - Movable Type to WordPress importer is manipulating the markdown if that is implemented on Movable type platform. Because of this markdown is being broken in WordPress.
-    - Movable Type has a extra extended content fields. That is also not being migrated in import.
-  - Options:
-    - `--dry-run` : true/false [To indicate the dry-rn mode or not]
-  - Example: 
-    ````
-    > wp mt-wp-cli overwrite-content --dry-run=true
-    Success: Total 100 posts will be processed.
-    
-    Success: Total time taken by this script: 1 second
-    
-    > wp mt-wp-cli overwrite-content --dry-run=false
-    Success: Total 100 posts have been processed.
-    
-    Success: Total time taken by this script: 1 second
-    ````
+Define the Movable Type database constants in the WordPress environment before running the commands:
 
-- To migrate the custom meta fields from Movable Type: `wp mt-wp-cli migrate-meta-values`
-  - *Why?* : Movable Type to WordPress importer is not importing custom meta fields and values. [Specifically when 3rd party Movable Type plugin is used]
-  - Options:
-    - `--dry-run` : true/false [To indicate the dry-rn mode or not]
-    - `--blog-id` : (int) Movable Type blog ID <default: 1> [This is needed only when Movable type has multiple blogs under one setup/database]
-    - `--filed-type` : postmeta/ACF <default: postmeta> [to define where these meta fields needs to be migrated. either postmeta or ACF custom fields]
-  - Example: 
-    ````
-    > wp mt-wp-cli migrate-meta-values --field-type=ACF --dry-run=true
-    Success: Total 100 posts will be processed.
-    
-    Success: Total time taken by this script: 1 second
-    
-    > wp mt-wp-cli migrate-meta-values --field-type=ACF --dry-run=false
-    Success: Total 100 posts have been processed.
-    
-    Success: Total time taken by this script: 1 second
-    ````
+```php
+define( 'MT_DB_NAME', 'movable_type_database_name' );
+define( 'MT_DB_HOST', 'movable_type_database_host' );
+define( 'MT_DB_USER', 'movable_type_database_user' );
+define( 'MT_DB_PASSWORD', 'movable_type_database_password' );
+```
 
-- To match Movable Type markdown with Jetpack markdown: `wp mt-wp-cli migrate-meta-values`
-  - *Why?* : Only when Movable Type used a markdown in post content. This will just save the posts without any change and Jetpack will parse it's markdown. [This needs Jetpack activated and markdown parsing enabled from its settings. ref - https://jetpack.com/support/markdown/]
-  - Options:
-    - `--dry-run` : true/false [To indicate the dry-rn mode or not]
-    - `--limit` : (int) Limit or number of posts being processed in one interval <default: 100>
-    - `--page` : (int) Page number if limit is used and want to process for next pages <default: 1>
-    - `--post-type` : Post Type <default: post>
-  - Example: 
-    ````
-    > wp mt-wp-cli sync-jetpack-markdown --limit=1000 --page=1 --dry-run=true
-    Success: Total 100 posts will be processed.
-    
-    Success: Total time taken by this script: 1 second
-    
-    > wp mt-wp-cli sync-jetpack-markdown --limit=1000 --page=1 --dry-run=false
-    Success: Total 100 posts have been processed.
-    
-    Success: Total time taken by this script: 1 second
-    ````
+`MT_DB_NAME` is required by `cli/class-mt-database.php`. If `MT_DB_HOST`, `MT_DB_USER`, or `MT_DB_PASSWORD` are not supplied, the class falls back to `DB_HOST`, `DB_USER`, and `DB_PASSWORD`.
 
-### Contribute
+Use the connection test before running migration commands:
 
-#### Reporting a bug 🐞
+```sh
+wp mt-wp-cli test-db-connection
+```
 
-Before creating a new issue, do browse through the [existing issues](https://github.com/a8cteam51/movabletype-importer-fixers/issues) for resolution or upcoming fixes. 
+## WP-CLI commands
 
-If you still need to [log an issue](https://github.com/a8cteam51/movabletype-importer-fixers/issues/new), making sure to include as much detail as you can, including clear steps to reproduce your issue if possible.
+The plugin registers commands under the `mt-wp-cli` namespace. The migration commands default to dry-run behavior because the base class initializes `$dry_run` to `true`; pass `--dry-run=false` to write changes.
+
+### Test the Movable Type database connection
+
+```sh
+wp mt-wp-cli test-db-connection
+```
+
+This initializes the Movable Type database connection and reports whether it connected successfully.
+
+### Migrate Movable Type tags
+
+```sh
+wp mt-wp-cli migrate-tags --dry-run=true --blog-id=1
+wp mt-wp-cli migrate-tags --dry-run=false --blog-id=1
+```
+
+This command reads Movable Type tag relationships from `mt_objecttag`, `mt_tag`, and `mt_entry`, finds matching WordPress posts by title or slug, and appends tags with `wp_set_post_tags()`.
+
+Supported options:
+
+- `--dry-run=true|false`
+- `--blog-id=<id>`; defaults to `1`
+- `--post-id-offset=<id>` for delta migrations; skips matching WordPress posts whose IDs are less than or equal to the offset
+
+### Overwrite WordPress post content from Movable Type content
+
+```sh
+wp mt-wp-cli overwrite-content --dry-run=true
+wp mt-wp-cli overwrite-content --dry-run=false
+```
+
+This command joins WordPress posts with Movable Type entries by post slug or title, then replaces WordPress post content with `entry_text`. When `entry_text_more` is present, it appends that extended content after a blank line.
+
+Supported options:
+
+- `--dry-run=true|false`
+- `--post-id-offset=<id>` for delta migrations
+- `--post-status=<status>` is documented in the command comments with `publish` and `draft` examples, but the current implementation initializes the status to `publish`
+
+### Migrate Movable Type custom fields
+
+```sh
+wp mt-wp-cli migrate-meta-values --field-names=link,podcast --field-type=postmeta --dry-run=true
+wp mt-wp-cli migrate-meta-values --field-names=link,podcast --field-type=postmeta --dry-run=false
+wp mt-wp-cli migrate-meta-values --field-names=link,podcast --field-type=ACF --dry-run=false
+```
+
+This command reads Movable Type custom field values from `mt_fdvalue`, finds matching WordPress posts by title or slug, and writes values either to WordPress post meta or to ACF fields.
+
+Supported options:
+
+- `--field-names=<comma-separated-names>`; required
+- `--field-type=postmeta|ACF`; defaults to `postmeta`
+- `--dry-run=true|false`
+- `--blog-id=<id>`; defaults to `1`
+- `--post-id-offset=<id>` for delta migrations
+
+### Resave posts for Jetpack Markdown
+
+```sh
+wp mt-wp-cli sync-jetpack-markdown --limit=100 --page=1 --post-type=post --dry-run=true
+wp mt-wp-cli sync-jetpack-markdown --limit=100 --page=1 --post-type=post --dry-run=false
+```
+
+This command fetches posts with `get_posts()` and, when not in dry-run mode, calls `wp_update_post()` with the current post content. The command comments describe this as a way to let Jetpack parse Movable Type Markdown after import.
+
+Supported options:
+
+- `--dry-run=true|false`
+- `--limit=<number>`; defaults to `100`
+- `--page=<number>`
+- `--post-type=<post-type>`; defaults to `post`
+
+## Development and validation
+
+This repository does not include dependency manifests or local install scripts. The tracked validation configuration is PHPCS:
+
+- `.phpcs.xml` uses the `WordPress-Extra` ruleset.
+- The pull request workflow runs `rtCamp/action-phpcs-code-review@master` with `args: "WordPress-Extra"`.
+- The workflow skips `tests` and `.github`.
+
+Before committing README changes, run:
+
+```sh
+git diff --check
+```
+
+Run PHPCS in an environment that already provides PHPCS and the WordPress coding standards:
+
+```sh
+phpcs --standard=.phpcs.xml .
+```
+
+## Maintenance notes
+
+- The plugin only loads the CLI code in WP-CLI contexts; it does not register browser-facing WordPress hooks in normal page loads.
+- Migration commands match Movable Type entries to WordPress posts by title or by basename/slug with underscores converted to hyphens.
+- Commands that write data should be run first with `--dry-run=true`, then with `--dry-run=false` once the target set is understood.
+- The CLI code defines `WP_IMPORTING` before migration operations when it is not already defined.
+- Log helper code writes CSV files under `mt-migration-logs` in the WordPress uploads directory when `create_log_file()` is used.
+
+## Contributing
+
+Before creating a new issue, browse the existing issues for prior reports or fixes:
+
+<https://github.com/a8cteam51/movabletype-importer-fixers/issues>
+
+New issues can be opened at:
+
+<https://github.com/a8cteam51/movabletype-importer-fixers/issues/new>
